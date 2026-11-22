@@ -1,0 +1,36 @@
+rules_version = '2';
+
+// =====================================================================
+// Agente Like Baguncinha - Regras de segurança do Cloud Firestore
+// ---------------------------------------------------------------------
+// Todo acesso direto de clientes (Web/Mobile SDK) é BLOQUEADO.
+// O backend FastAPI utiliza o Firebase Admin SDK (serviceAccountKey.json),
+// que ignora estas regras por operar com privilégios administrativos.
+// Os clientes finais consultam seus dados SOMENTE pela API REST
+// autenticada (/v1/consulta/* com X-API-Key).
+// =====================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /clientes/{clienteId} {
+      allow read, write: if false;
+    }
+
+    match /lancamentos/{lancamentoId} {
+      allow read, write: if false;
+    }
+
+    match /fechamentos/{fechamentoId} {
+      allow read, write: if false;
+    }
+
+    match /logs_webhook/{logId} {
+      allow read, write: if false;
+    }
+
+    // Qualquer outra coleção também é bloqueada
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

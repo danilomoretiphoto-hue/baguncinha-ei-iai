@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2D323A" />
+  <title>Agente Like Baguncinha 1.0 — Controle de Comandas &amp; Fiados</title>
+  <link rel="icon" type="image/png" href="/static/logo-icon-transparent.png" />
+
+  <!-- Preconnect & Google Fonts (Inter) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- FontAwesome 6.5.1 (Ícones Vetoriais Nítidos em Alta Resolução) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <!-- Estilos Personalizados e Tema em Alta Resolução -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Script inline para aplicar tema e estado da sidebar imediatamente sem flash -->
+  <script>
+    (function () {
+      const savedTheme = localStorage.getItem("lb_theme");
+      if (savedTheme === "dark" || (!savedTheme && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+      if (localStorage.getItem("lb_sidebar_collapsed") === "1" && window.innerWidth >= 992) {
+        document.documentElement.classList.add("sidebar-is-collapsed");
+      }
+      // URL do backend FastAPI. Vazio = mesmo host.
+      window.API_BASE_URL = "";
+    })();
+  </script>
+</head>
+<body class="app-layout">
+
+  <!-- BACKDROP MOBILE SIDEBAR -->
+  <div id="mobileBackdrop" class="mobile-backdrop hidden" onclick="toggleSidebar()"></div>
+
+  <!-- SIDEBAR LATERAL CHARCOAL (#2D323A) RETRÁTIL -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-top">
+      <!-- Top Brand Strip -->
+      <div class="brand-strip">
+        <a href="#sec-ingestao" class="brand-link" title="Agente Like Baguncinha 1.0">
+          <img src="/static/logo-icon-transparent.png" alt="Logo Baguncinha Ei Iai" class="brand-logo-img" />
+          <div class="brand-title">
+            <span class="brand-main">Baguncinha <span class="brand-accent">Ei Iai</span></span>
+            <span class="brand-tag">AGENTE IA 1.0 &amp; FIADOS</span>
+          </div>
+        </a>
+        <!-- Botão para recolher/expandir sidebar no Desktop -->
+        <button type="button" id="btn-collapse-sidebar" class="btn-icon-sidebar hidden-mobile" onclick="toggleSidebarCollapse()" title="Recolher / Expandir Menu">
+          <i class="fa-solid fa-bars-staggered"></i>
+        </button>
+        <!-- Botão de fechar no Mobile -->
+        <button type="button" class="btn-icon-sidebar lg-hidden" onclick="toggleSidebar()" title="Fechar menu">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Navigation List -->
+      <nav class="sidebar-nav">
+        <a href="#sec-kpis" class="nav-item active" onclick="setActiveNav(this)" title="Dashboard">
+          <i class="fa-solid fa-table-columns nav-icon"></i>
+          <span>DASHBOARD</span>
+        </a>
+        <a href="#sec-ingestao" class="nav-item" onclick="setActiveNav(this)" title="Comandas &amp; IA">
+          <i class="fa-solid fa-wand-magic-sparkles nav-icon"></i>
+          <span>COMANDAS &amp; IA</span>
+        </a>
+        <a href="#sec-conferencia" class="nav-item" onclick="setActiveNav(this)" title="Conferência Humana">
+          <i class="fa-solid fa-triangle-exclamation nav-icon"></i>
+          <span>CONFERÊNCIA HUMANA</span>
+        </a>
+        <a href="#sec-clientes" class="nav-item" onclick="setActiveNav(this)" title="Clientes &amp; Fiados">
+          <i class="fa-solid fa-users nav-icon"></i>
+          <span>CLIENTES &amp; FIADOS</span>
+        </a>
+        <a href="#sec-lancamentos" class="nav-item" onclick="setActiveNav(this)" title="Lançamentos">
+          <i class="fa-solid fa-receipt nav-icon"></i>
+          <span>LANÇAMENTOS</span>
+        </a>
+        <button type="button" class="nav-item nav-btn-action" onclick="document.getElementById('btn-export').click()" title="Fechamento .XLSX">
+          <i class="fa-solid fa-file-excel nav-icon"></i>
+          <span>FECHAMENTO .XLSX</span>
+        </button>
+        <button type="button" class="nav-item nav-btn-action" onclick="abrirModalInfoWebhook()" title="API &amp; Webhook">
+          <i class="fa-brands fa-whatsapp nav-icon"></i>
+          <span>API &amp; WEBHOOK</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Sidebar Footer (Modo Noturno Único & Créditos Solicitados) -->
+    <div class="sidebar-footer">
+      <div class="theme-switch-row">
+        <span class="theme-label"><i class="fa-solid fa-circle-half-stroke"></i> Modo Noturno</span>
+        <button type="button" id="btn-theme-toggle" class="theme-toggle-pill" title="Alternar entre modo claro e noturno" aria-label="Alternar tema">
+          <span class="theme-icon-light"><i class="fa-solid fa-sun"></i></span>
+          <span class="theme-icon-dark"><i class="fa-solid fa-moon"></i></span>
+        </button>
+      </div>
+      <div class="system-meta">
+        <div class="meta-status">
+          <span class="pulse-dot"></span>
+          <span class="meta-dev-title font-semibold">Desenvolvido por Danilo Moreti do Nascimento</span>
+        </div>
+        <p class="meta-sub">Big Data no agronegócio</p>
+        <p class="meta-sub">Fatec Bebedouro</p>
+        <p class="meta-sub font-bold text-sky">© 2026 Baguncinha Ei Iai</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ÁREA PRINCIPAL DE CONTEÚDO -->
+  <div class="main-wrapper">
+
+    <!-- TOPBAR SUPERIOR PURA EM ALTA RESOLUÇÃO (Modo Noturno Duplicado Removido) -->
+    <header class="topbar">
+      <!-- Esquerda: Mobile Menu Button + Pesquisa Global Rápida -->
+      <div class="topbar-left">
+        <button type="button" class="btn-hamburger lg-hidden" onclick="toggleSidebar()" title="Abrir menu lateral">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+
+        <div class="quick-search-box">
+          <input
+            id="busca-cliente"
+            type="search"
+            placeholder="PESQUISAR CLIENTE, COMANDA OU ITEM..."
+            autocomplete="off"
+            title="Filtra a tabela de lançamentos e clientes em tempo real"
+          />
+          <i class="fa-solid fa-magnifying-glass search-icon"></i>
+        </div>
+      </div>
+
+      <!-- Direita: Conexão API + Autenticação Admin + Exportação + Notificações + Perfil -->
+      <div class="topbar-right">
+        <!-- Status de Conexão -->
+        <span id="conn-status" class="pill pill-off" title="Status da conexão com o backend FastAPI">
+          ● Desconectado
+        </span>
+
+        <!-- Formulário de Autenticação com X-Admin-Key -->
+        <form id="auth-form" class="auth-bar" autocomplete="off">
+          <input
+            id="api-base"
+            type="url"
+            placeholder="API (opcional)"
+            title="URL base do backend (deixe vazio se servido no mesmo servidor)"
+          />
+          <input
+            id="admin-key"
+            type="password"
+            placeholder="Chave X-Admin-Key"
+            required
+            title="Chave mestra definida no arquivo .env (ADMIN_MASTER_KEY)"
+          />
+          <button type="submit" class="btn btn-sky btn-compact">
+            <i class="fa-solid fa-key"></i>
+            <span>Conectar</span>
+          </button>
+          <button type="button" id="btn-logout" class="btn btn-ghost btn-compact" title="Remover chave mestra salva neste navegador">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+            <span class="btn-label-text">Sair</span>
+          </button>
+        </form>
+
+        <!-- Exportação Fechamento .XLSX -->
+        <div class="export-bar">
+          <input id="export-date" type="date" title="Data de referência para exportação do fechamento" />
+          <button type="button" id="btn-export" class="btn btn-teal btn-compact" title="Baixar relatório em Excel (.xlsx)">
+            <i class="fa-solid fa-file-excel"></i>
+            <span class="btn-label-text">Exportar .xlsx</span>
+          </button>
+        </div>
+
+        <!-- Badges de Alerta do Header -->
+        <a href="#sec-clientes" class="notif-btn" title="Total de fiados pendentes">
+          <i class="fa-regular fa-bell"></i>
+          <span id="notif-fiados" class="notif-badge">0</span>
+        </a>
+
+        <a href="#sec-conferencia" class="notif-btn" title="Pendências de conferência humana da IA">
+          <i class="fa-regular fa-envelope"></i>
+          <span id="notif-pendencias" class="notif-badge">0</span>
+        </a>
+
+        <!-- Avatar do Usuário / Admin -->
+        <div class="user-pill" title="Painel Administrativo Agente Like Baguncinha 1.0">
+          <span class="user-name">Danilo Moreti</span>
+          <div class="user-avatar">DM</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- WORKSPACE CANVAS (#F4F6F9) -->
+    <main class="canvas">
+
+      <!-- SUBHEADER DE TÍTULO DA PÁGINA E AÇÕES RÁPIDAS -->
+      <div id="sec-kpis" class="page-header">
+        <div>
+          <h1 class="page-title">Dashboard Operacional</h1>
+          <div class="page-subtitle">
+            <span id="data-atual-extenso">Bebedouro - SP</span>
+            <i class="fa-regular fa-calendar ml-1 text-slate-400"></i>
+            <span class="realtime-badge ml-2" title="Atualização automática a cada 4 segundos sem F5">
+              <span class="pulse-dot-green"></span> Em tempo real
+            </span>
+          </div>
+        </div>
+
+        <div class="page-actions">
+          <button type="button" id="btn-baixa-geral" class="btn btn-teal">
+            <i class="fa-solid fa-hand-holding-dollar"></i>
+            <span>Dar Baixa em Fiado</span>
+          </button>
+          <button type="button" id="btn-novo-cliente-top" class="btn btn-ghost" onclick="document.getElementById('btn-novo-cliente').click()">
+            <i class="fa-solid fa-user-plus"></i>
+            <span>+ Novo Cliente</span>
+          </button>
+          <button type="button" id="btn-refresh-top" class="btn-icon-circle" title="Atualizar dados agora" onclick="document.getElementById('btn-refresh').click()">
+            <i class="fa-solid fa-arrows-rotate"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- TOP 5 SOLID KPI CARDS (Paleta Exata de Alta Fidelidade) -->
+      <section class="kpi-grid">
+        <!-- 1. Vibrant Sky Blue (#03A9F4): Total Vendido Hoje -->
+        <div class="kpi-card kpi-sky">
+          <div class="kpi-icon-wrap">
+            <i class="fa-solid fa-calculator"></i>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-tag">Vendas Hoje</span>
+            <strong id="kpi-vendido" class="kpi-number tabular-nums">R$ 0,00</strong>
+            <span id="kpi-vendido-sub" class="kpi-detail">Vendas pagas (PIX, dinheiro, cartão)</span>
+          </div>
+        </div>
+
+        <!-- 2. Coral Red (#EB6A62): Total Fiado a Receber -->
+        <div class="kpi-card kpi-coral">
+          <div class="kpi-icon-wrap">
+            <i class="fa-solid fa-file-invoice-dollar"></i>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-tag">Fiado a Receber</span>
+            <strong id="kpi-fiado" class="kpi-number tabular-nums">R$ 0,00</strong>
+            <span id="kpi-fiado-sub" class="kpi-detail">Saldo devedor total em aberto</span>
+          </div>
+        </div>
+
+        <!-- 3. Muted Indigo-Purple (#6E658C): Recebido de Fiado Hoje -->
+        <div class="kpi-card kpi-purple">
+          <div class="kpi-icon-wrap">
+            <i class="fa-solid fa-piggy-bank"></i>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-tag">Recebido Fiado Hoje</span>
+            <strong id="kpi-recebido" class="kpi-number tabular-nums">R$ 0,00</strong>
+            <span id="kpi-recebido-sub" class="kpi-detail">Baixas registradas no dia</span>
+          </div>
+        </div>
+
+        <!-- 4. Emerald Teal (#10A888): Saldo em Caixa / Despesas e Líquido -->
+        <div class="kpi-card kpi-teal">
+          <div class="kpi-icon-wrap">
+            <i class="fa-solid fa-coins"></i>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-tag">Saldo em Caixa</span>
+            <strong id="kpi-saldo-caixa" class="kpi-number tabular-nums">R$ 0,00</strong>
+            <span id="kpi-saldo-sub" class="kpi-detail">Vendas à vista + recebimentos fiado</span>
+          </div>
+        </div>
+
+        <!-- 5. Dark Petrol Navy / Alert (#253B4B): Pendências de Conferência IA -->
+        <div class="kpi-card kpi-petrol">
+          <div class="kpi-icon-wrap">
+            <i class="fa-solid fa-clipboard-check"></i>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-tag">Pendências IA</span>
+            <strong id="kpi-pendencias" class="kpi-number tabular-nums">0</strong>
+            <span class="kpi-detail">Confiança MÉDIA ou BAIXA</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- SEÇÃO 2 COLUNAS: INGESTÃO MULTIMODAL IA + FILA DE CONFERÊNCIA HUMANA -->
+      <section class="grid-2-col">
+
+        <!-- Card Ingestão Multimodal -->
+        <div id="sec-ingestao" class="flat-card card-ingest">
+          <div class="card-header">
+            <div class="header-left">
+              <i class="fa-solid fa-wand-magic-sparkles text-sky"></i>
+              <h2>Ingestão Rápida Multimodal &amp; Conferência</h2>
+            </div>
+            <!-- Destaque: Agente Like Baguncinha 1.0 -->
+            <span class="badge-tag badge-tag-sky">Agente Like Baguncinha 1.0</span>
+          </div>
+
+          <div class="ingest-body">
+            <!-- Barra de Ações Rápidas de Mídia: Tirar Foto e Gravar Áudio -->
+            <div class="media-actions-bar">
+              <button type="button" id="btn-tirar-foto" class="btn-media-action" onclick="iniciarCapturaFoto()" title="Tirar foto da comanda usando a câmera">
+                <i class="fa-solid fa-camera text-sky"></i>
+                <span>Tirar Foto</span>
+              </button>
+              <button type="button" id="btn-gravar-audio" class="btn-media-action" onclick="alternarGravacaoAudio()" title="Gravar áudio com o microfone">
+                <i id="icon-mic-status" class="fa-solid fa-microphone text-teal"></i>
+                <span id="label-audio-rec">Gravar Áudio</span>
+              </button>
+              <button type="button" class="btn-media-action" onclick="document.getElementById('file-input').click()" title="Anexar arquivo de imagem, áudio ou PDF do computador">
+                <i class="fa-solid fa-paperclip text-purple"></i>
+                <span>Anexar Arquivo</span>
+              </button>
+            </div>
+
+            <!-- Inputs Ocultos de Captura Direta -->
+            <input id="camera-input" type="file" accept="image/*" capture="environment" hidden onchange="handleCameraCapture(event)" />
+            <input id="audio-input-fallback" type="file" accept="audio/*" capture="microphone" hidden onchange="definirArquivo(this.files[0])" />
+
+            <!-- Dropzone para Imagens e Áudios -->
+            <label id="dropzone" class="dropzone" for="file-input">
+              <input id="file-input" type="file" accept="image/*,audio/*,application/pdf" hidden />
+              <div id="dz-content" class="dz-content">
+                <div class="dz-icons-row">
+                  <i class="fa-solid fa-camera text-sky"></i>
+                  <i class="fa-solid fa-microphone text-teal"></i>
+                  <i class="fa-solid fa-file-invoice text-coral"></i>
+                </div>
+                <strong class="dz-title">Arraste ou anexe comanda, comprovante ou áudio</strong>
+                <span class="dz-sub">Tire foto com a câmera, grave áudio pelo microfone ou arraste arquivos (até 20 MB)</span>
+              </div>
+              <div id="dz-preview" class="dz-preview hidden"></div>
+            </label>
+
+            <!-- Textarea para Notas Rápidas de Balcão -->
+            <textarea
+              id="ingest-text"
+              rows="3"
+              placeholder="Digite a nota rápida de balcão… ex: Marcar pro João do Bar 3 guaraná lata 5 real cada e 1 x-tudo 22 real, paga semana que vem"
+            ></textarea>
+
+            <!-- Seletor de Cliente + Botão de Processar ("Mandar para o Agente") -->
+            <div class="ingest-controls">
+              <select id="ingest-cliente" title="Associar a um cliente ou deixar a IA identificar automaticamente">
+                <option value="">🤖 Cliente detectado pela IA</option>
+              </select>
+
+              <button type="button" id="btn-processar" class="btn btn-sky btn-lg">
+                <span class="spinner"></span>
+                <i class="fa-solid fa-bolt"></i>
+                <span class="btn-label">Mandar para o Agente</span>
+              </button>
+            </div>
+
+            <!-- Botões de Teste Rápido (Preenchimento com 1 Clique) -->
+            <div class="quick-samples">
+              <span class="samples-title"><i class="fa-regular fa-lightbulb"></i> Testes rápidos:</span>
+              <button type="button" class="btn-sample" onclick="preencherExemplo('xsalada')">
+                + X-Salada João
+              </button>
+              <button type="button" class="btn-sample" onclick="preencherExemplo('marmita')">
+                + Marmitex Maria R$ 69
+              </button>
+              <button type="button" class="btn-sample" onclick="preencherExemplo('cerveja')">
+                + 8x Cerveja Balcão
+              </button>
+              <button type="button" class="btn-sample" onclick="preencherExemplo('despesa')">
+                + Despesa Gelo Bebedouro
+              </button>
+            </div>
+
+            <!-- Caixa de Resultado do Agente -->
+            <div id="ingest-result" class="ingest-result hidden"></div>
+          </div>
+        </div>
+
+        <!-- Card Fila de Conferência Humana com Alerta Visual e Sonoro -->
+        <div id="sec-conferencia" class="flat-card card-review">
+          <div class="card-header">
+            <div class="header-left">
+              <i class="fa-solid fa-triangle-exclamation text-coral"></i>
+              <h2>Fila de Conferência Humana</h2>
+            </div>
+            <div class="flex items-center gap-2">
+              <!-- Botão para ativar/mutar alerta sonoro -->
+              <button type="button" id="btn-sound-toggle" class="btn-icon-sound" onclick="toggleSoundAlert()" title="Som de notificações: Ativado">
+                <i class="fa-solid fa-bell"></i>
+              </button>
+              <span id="review-count" class="badge-tag badge-tag-coral">0 pendentes</span>
+            </div>
+          </div>
+
+          <div class="review-body">
+            <p class="review-desc">
+              Lançamentos com confiança <strong>MÉDIA</strong> ou <strong>BAIXA</strong> emitem alerta sonoro e exigem auditoria antes de entrar no caixa oficial.
+            </p>
+            <div id="fila-conferencia" class="review-list">
+              <p class="empty-state">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span>Conecte-se com a chave mestra para carregar a fila de conferência.</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- SEÇÃO CLIENTES & FIADOS -->
+      <section id="sec-clientes" class="flat-card">
+        <div class="card-header">
+          <div class="header-left">
+            <i class="fa-solid fa-users text-teal"></i>
+            <h2>Clientes &amp; Controle de Fiados</h2>
+          </div>
+          <div class="header-actions">
+            <button type="button" id="btn-novo-cliente" class="btn btn-ghost btn-compact">
+              <i class="fa-solid fa-user-plus"></i>
+              <span>+ Novo Cliente</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>CLIENTE / ID</th>
+                <th>WHATSAPP / TELEFONE</th>
+                <th>SALDO DEVEDOR</th>
+                <th>CADASTRADO EM</th>
+                <th class="text-right">AÇÕES RÁPIDAS</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-clientes">
+              <tr>
+                <td colspan="5" class="empty-state">Nenhum cliente carregado ainda. Conecte-se com a chave mestra.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SEÇÃO HISTÓRICO DE LANÇAMENTOS -->
+      <section id="sec-lancamentos" class="flat-card">
+        <div class="card-header flex-wrap">
+          <div class="header-left">
+            <i class="fa-solid fa-receipt text-sky"></i>
+            <h2>Histórico de Lançamentos</h2>
+          </div>
+          <div class="table-filters">
+            <select id="filtro-tipo" title="Filtrar lançamentos por tipo de pagamento">
+              <option value="">Todos os tipos</option>
+              <option value="PAGO">Somente PAGOS (À vista / Baixas)</option>
+              <option value="FIADO_A_RECEBER">Somente FIADO A RECEBER</option>
+              <option value="A_PAGAR">Somente DESPESAS (A Pagar)</option>
+            </select>
+            <button type="button" id="btn-refresh" class="btn btn-ghost btn-compact" title="Recarregar lançamentos">
+              <i class="fa-solid fa-arrows-rotate"></i>
+              <span>Atualizar</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>DATA / HORA</th>
+                <th>CLIENTE</th>
+                <th>OPERAÇÃO</th>
+                <th>TIPO</th>
+                <th>FORMA</th>
+                <th>ITENS / DETALHAMENTO</th>
+                <th class="text-right">VALOR TOTAL</th>
+                <th>STATUS</th>
+                <th>ORIGEM</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-lancamentos">
+              <tr>
+                <td colspan="9" class="empty-state">Nenhum lançamento carregado ainda.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 3 CARDS RESUMO DE RODAPÉ (Ticket Médio, Fiados Quitados, Sincronização) -->
+      <section class="grid-3-col">
+        <div class="flat-card bottom-summary-card">
+          <div class="summary-text">
+            <span class="summary-label">Ticket Médio</span>
+            <strong id="bottomTicketMedio" class="summary-val text-sky tabular-nums">R$ 0,00</strong>
+            <p class="summary-desc">Média por comanda calculada a partir dos lançamentos válidos de hoje.</p>
+          </div>
+          <div class="summary-icon text-sky">
+            <i class="fa-solid fa-sack-dollar"></i>
+          </div>
+        </div>
+
+        <div class="flat-card bottom-summary-card">
+          <div class="summary-text">
+            <span class="summary-label">Fiados Quitados Hoje</span>
+            <strong id="bottomFiadosQuitados" class="summary-val text-teal tabular-nums">R$ 0,00</strong>
+            <p class="summary-desc">Valor recuperado através de baixas registradas em Pix ou dinheiro.</p>
+          </div>
+          <div class="summary-icon text-teal">
+            <i class="fa-solid fa-circle-check"></i>
+          </div>
+        </div>
+
+        <div class="flat-card bottom-summary-card">
+          <div class="summary-text">
+            <span class="summary-label">Total de Lançamentos</span>
+            <strong id="bottomLancamentosHoje" class="summary-val text-purple tabular-nums">0</strong>
+            <p class="summary-desc">Transações sincronizadas em tempo real via Cloud Firestore.</p>
+          </div>
+          <div class="summary-icon text-purple">
+            <i class="fa-solid fa-layer-group"></i>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- BOTAO FLUTUANTE DE EXPORTAÇÃO (FAB) -->
+  <button type="button" id="fab-export" class="fab-btn" title="Exportar Fechamento Diário (.xlsx)">
+    <i class="fa-solid fa-file-excel"></i>
+    <span>.xlsx</span>
+  </button>
+
+  <!-- =========================================================================
+       MODAIS OBRIGATÓRIOS DO SISTEMA (100% PRESERVADOS)
+       ========================================================================= -->
+
+  <!-- Modal 1: Baixa em Fiado -->
+  <div class="modal hidden" id="modal-baixa" role="dialog" aria-modal="true">
+    <form class="modal-box" id="form-baixa">
+      <div class="modal-header">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-hand-holding-dollar text-teal"></i>
+          <h3>Dar Baixa em Fiado</h3>
+        </div>
+        <button type="button" class="btn-close" data-close title="Fechar">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <label>
+          <span>Cliente devedor:</span>
+          <select id="baixa-cliente" required></select>
+        </label>
+
+        <div class="balance-info-box">
+          <span class="muted">Saldo em aberto do cliente:</span>
+          <strong id="baixa-saldo" class="text-coral tabular-nums">R$ 0,00</strong>
+        </div>
+
+        <div class="grid-2">
+          <label>
+            <span>Valor pago (R$):</span>
+            <input id="baixa-valor" type="number" step="0.01" min="0.01" required placeholder="0.00" class="tabular-nums" />
+          </label>
+          <label>
+            <span>Forma de pagamento:</span>
+            <select id="baixa-forma">
+              <option value="PIX">PIX</option>
+              <option value="DINHEIRO">Dinheiro</option>
+              <option value="CARTAO_DEBITO">Cartão de Débito</option>
+              <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          <span>Observações da baixa:</span>
+          <input id="baixa-obs" type="text" maxlength="500" placeholder="Ex: Pago no balcão via Pix por parente" />
+        </label>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+        <button type="submit" class="btn btn-teal">
+          <span class="spinner"></span>
+          <i class="fa-solid fa-check"></i>
+          <span class="btn-label">Confirmar Baixa</span>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal 2: Cobrança WhatsApp -->
+  <div class="modal hidden" id="modal-cobranca" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="flex items-center gap-2">
+          <i class="fa-brands fa-whatsapp text-teal"></i>
+          <h3>Cobrar via WhatsApp</h3>
+        </div>
+        <button type="button" class="btn-close" data-close title="Fechar">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <label>
+          <span>Mensagem personalizada gerada pelo sistema:</span>
+          <textarea id="cobranca-msg" rows="10" readonly></textarea>
+        </label>
+      </div>
+
+      <div class="modal-footer">
+        <a id="cobranca-link" class="btn btn-ghost hidden" target="_blank" rel="noopener">
+          <i class="fa-brands fa-whatsapp text-teal"></i>
+          <span>Abrir no WhatsApp Web</span>
+        </a>
+        <button type="button" id="btn-copiar" class="btn btn-teal">
+          <i class="fa-regular fa-copy"></i>
+          <span>Copiar Mensagem</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Conferir / Editar / Rejeitar Lançamento -->
+  <div class="modal hidden" id="modal-editar" role="dialog" aria-modal="true">
+    <form class="modal-box modal-lg" id="form-editar">
+      <div class="modal-header">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-pen-to-square text-sky"></i>
+          <h3>Conferir Lançamento &amp; Auditoria</h3>
+        </div>
+        <button type="button" class="btn-close" data-close title="Fechar">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="grid-4">
+          <label>
+            <span>Cliente:</span>
+            <select id="edit-cliente"></select>
+          </label>
+          <label>
+            <span>Operação:</span>
+            <select id="edit-operacao">
+              <option value="VENDA">VENDA</option>
+              <option value="PAGAMENTO_FIADO">PAGAMENTO_FIADO</option>
+              <option value="DESPESA">DESPESA</option>
+            </select>
+          </label>
+          <label>
+            <span>Tipo Pagamento:</span>
+            <select id="edit-tipo">
+              <option value="PAGO">PAGO</option>
+              <option value="FIADO_A_RECEBER">FIADO_A_RECEBER</option>
+              <option value="A_PAGAR">A_PAGAR</option>
+            </select>
+          </label>
+          <label>
+            <span>Forma:</span>
+            <select id="edit-forma">
+              <option value="PIX">PIX</option>
+              <option value="DINHEIRO">DINHEIRO</option>
+              <option value="CARTAO_CREDITO">CARTAO_CREDITO</option>
+              <option value="CARTAO_DEBITO">CARTAO_DEBITO</option>
+              <option value="FIADO">FIADO</option>
+            </select>
+          </label>
+        </div>
+
+        <details class="raw-details">
+          <summary><i class="fa-solid fa-quote-left mr-1"></i> Transcrição original da IA (Texto/Áudio/OCR)</summary>
+          <pre id="edit-raw"></pre>
+        </details>
+
+        <div class="items-editor-header">
+          <strong>Itens da comanda:</strong>
+          <button type="button" id="btn-add-item" class="btn btn-ghost btn-compact">+ Adicionar Item</button>
+        </div>
+        <div id="edit-itens" class="items-editor"></div>
+
+        <div class="total-bar">
+          <span>Total recalculado do lançamento:</span>
+          <strong id="edit-total" class="text-teal tabular-nums">R$ 0,00</strong>
+        </div>
+
+        <label>
+          <span>Observações e justificativa:</span>
+          <textarea id="edit-obs" rows="2" maxlength="2000"></textarea>
+        </label>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" id="btn-rejeitar" class="btn btn-danger">
+          <i class="fa-solid fa-trash-can"></i>
+          <span>Rejeitar Lançamento</span>
+        </button>
+        <button type="submit" class="btn btn-sky">
+          <span class="spinner"></span>
+          <i class="fa-solid fa-check-double"></i>
+          <span class="btn-label">Salvar e Aprovar</span>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal 4: Cadastro de Novo Cliente -->
+  <div class="modal hidden" id="modal-cliente" role="dialog" aria-modal="true">
+    <form class="modal-box" id="form-cliente">
+      <div class="modal-header">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-user-plus text-sky"></i>
+          <h3>Novo Cliente Fiado</h3>
+        </div>
+        <button type="button" class="btn-close" data-close title="Fechar">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <label>
+          <span>Nome completo / Apelido:</span>
+          <input id="cli-nome" type="text" minlength="2" maxlength="120" required placeholder="Ex: Carlos da Oficina" />
+        </label>
+        <div class="grid-2">
+          <label>
+            <span>WhatsApp (com DDD):</span>
+            <input id="cli-tel" type="tel" maxlength="20" placeholder="Ex: 5517999993333" />
+          </label>
+          <label>
+            <span>CPF ou CNPJ:</span>
+            <input id="cli-doc" type="text" maxlength="20" placeholder="Opcional" />
+          </label>
+        </div>
+        <div id="cli-result" class="ingest-result hidden"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+        <button type="submit" class="btn btn-sky">
+          <span class="spinner"></span>
+          <i class="fa-solid fa-user-check"></i>
+          <span class="btn-label">Cadastrar Cliente</span>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal 5: Informações de API & Webhook (Para visualização) -->
+  <div class="modal hidden" id="modal-info-webhook" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="flex items-center gap-2">
+          <i class="fa-brands fa-whatsapp text-teal"></i>
+          <h3>API REST &amp; Webhook WhatsApp</h3>
+        </div>
+        <button type="button" class="btn-close" data-close title="Fechar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="info-alert">
+          <i class="fa-solid fa-circle-check text-teal"></i>
+          <div>
+            <strong>Endpoints Prontos para Deploy:</strong>
+            <p>Compatível com Meta Cloud API, Evolution API, Z-API e requisições HTTP REST.</p>
+          </div>
+        </div>
+        <div class="endpoint-code-block">
+          <div><span class="code-method">GET</span> /v1/whatsapp/webhook?hub.mode=subscribe</div>
+          <div><span class="code-method">POST</span> /v1/whatsapp/webhook (Header: X-Webhook-Token)</div>
+          <div><span class="code-method">GET</span> /v1/consulta/resumo (Header: X-API-Key)</div>
+          <div><span class="code-method">GET</span> /docs (Swagger interativo)</div>
+        </div>
+        <p class="muted mt-2">
+          Acesse a documentação Swagger em <a href="/docs" target="_blank" class="text-sky underline">/docs</a> para testar interativamente todas as rotas.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close>Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 6: Captura de Foto com Câmera ao Vivo -->
+  <div class="modal hidden" id="modal-camera" role="dialog" aria-modal="true">
+    <div class="modal-box modal-camera-box">
+      <div class="modal-header">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-camera text-sky"></i>
+          <h3>Tirar Foto da Comanda</h3>
+        </div>
+        <button type="button" class="btn-close" onclick="fecharModalCamera()" title="Fechar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="camera-stream-wrapper">
+          <video id="camera-stream" autoplay playsinline muted></video>
+          <canvas id="camera-canvas" hidden></canvas>
+        </div>
+        <p class="muted text-center mt-1">Aponte a câmera para a comanda, recibo ou papel de pedido.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="fecharModalCamera()">Cancelar</button>
+        <button type="button" class="btn btn-sky" onclick="capturarFotoDoStream()">
+          <i class="fa-solid fa-camera"></i>
+          <span>Capturar Foto</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTAINER DE TOASTS FLUTUANTES -->
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <!-- Scripts do Sistema -->
+  <script src="app.js" defer></script>
+</body>
+</html>
