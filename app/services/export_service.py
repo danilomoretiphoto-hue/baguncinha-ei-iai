@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from io import BytesIO
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -158,3 +158,38 @@ def gerar_xlsx_fechamento(
     buffer = BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
+
+
+def gerar_xlsx_relatorio_gerencial(
+    lancamentos: List[Dict[str, Any]],
+    data_ref: Optional[str] = None,
+    clientes_mapa: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> bytes:
+    """Gera o arquivo Excel gerencial com base em lançamentos filtrados."""
+    clientes = clientes_mapa or {}
+    vendas_pago = sum(float(l.get("valor_total") or 0.0) for l in lancamentos if l.get("tipo_pagamento") == "PAGO" and l.get("tipo_operacao") == "VENDA" and l.get("status_validacao") != "REJEITADO" and l.get("status_validacao") != "CANCELADO")
+    fiado_gerado = sum(float(l.get("valor_total") or 0.0) for l in lancamentos if l.get("tipo_pagamento") == "FIADO_A_RECEBER" and l.get("tipo_operacao") == "VENDA" and l.get("status_validacao") != "REJEITADO" and l.get("status_validacao") != "CANCELADO")
+    fiado_recebido = sum(float(l.get("valor_total") or 0.0) for l in lancamentos if l.get("tipo_operacao") == "PAGAMENTO_FIADO" and l.get("status_validacao") != "REJEITADO" and l.get("status_validacao") != "CANCELADO")
+    despesas = sum(float(l.get("valor_total") or 0.0) for l in lancamentos if l.get("tipo_operacao") == "DESPESA" and l.get("status_validacao") != "REJEITADO" and l.get("status_validacao") != "CANCELADO")
+    saldo_liquido = (vendas_pago + fiado_recebido) - despesas
+
+    resumo = {
+        "data_fechamento": data_ref or datetime.now().strftime("%Y-%m-%d"),
+        "total_vendas_pago": round(vendas_pago, 2),
+        "total_fiado_gerado": round(fiado_gerado, 2),
+        "total_fiado_recebido": round(fiado_recebido, 2),
+        "total_despesas": round(despesas, 2),
+        "saldo_liquido_dia": round(saldo_liquido, 2),
+        "quantidade_transacoes": len([l for l in lancamentos if l.get("status_validacao") not in ("REJEITADO", "CANCELADO")]),
+    }
+
+    wb = Workbook()
+    _aba_resumo(wb.active, resumo, lancamentos)
+    _aba_detalhamento(wb.create_sheet("Detalhamento de Lançamentos"), lancamentos, clientes)
+    wb.properties.title = f"Relatório Gerencial Baguncinha Ei Iai {resumo['data_fechamento']}"
+    wb.properties.creator = "Baguncinha Ei Iai"
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+

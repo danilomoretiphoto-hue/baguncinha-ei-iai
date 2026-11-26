@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import STATIC_DIR, settings
 from app.database import init_firebase
-from app.routers import admin, consulta, health, whatsapp
+from app.routers import admin, api, consulta, health, whatsapp
 from app.services.firestore_service import NotFoundError, RegraNegocioError
 from app.services.gemini_service import GeminiServiceError
 
@@ -81,6 +81,7 @@ async def _gemini_error(_: Request, exc: GeminiServiceError):
 app.include_router(health.router)
 app.include_router(consulta.router)
 app.include_router(admin.router)
+app.include_router(api.router)
 app.include_router(whatsapp.router)
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")

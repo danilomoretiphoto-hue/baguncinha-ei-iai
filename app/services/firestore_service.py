@@ -105,7 +105,7 @@ def _doc(snapshot) -> Dict[str, Any]:
 
 
 def _ativo(lanc: Dict[str, Any]) -> bool:
-    return lanc.get("status_validacao") != REJEITADO
+    return lanc.get("status_validacao") not in (REJEITADO, "CANCELADO")
 
 
 def intervalo_dia(data_str: Optional[str] = None) -> Tuple[str, str]:
@@ -232,6 +232,23 @@ def obter_ou_criar_cliente(nome: str, telefone: str = "") -> Dict[str, Any]:
 def salvar_lancamento(dados: Dict[str, Any]) -> Dict[str, Any]:
     ref = get_db().collection(Collections.LANCAMENTOS).document()
     agora = agora_iso()
+    raw_itens = dados.get("itens", []) or []
+    itens_processados = [
+        {
+            "descricao": str(i["descricao"])[:200],
+            "quantidade": float(i["quantidade"]),
+            "valor_unitario": _f(i["valor_unitario"]),
+            "valor_total_item": _f(float(i["quantidade"]) * float(i["valor_unitario"])),
+        }
+        for i in raw_itens
+    ]
+    if not itens_processados and dados.get("valor_total") is not None:
+        vt = _f(dados.get("valor_total"))
+        desc_padrao = "Fiado manual" if dados.get("tipo_pagamento") == FIADO_A_RECEBER else "Venda manual"
+        itens_processados = [{"descricao": desc_padrao, "quantidade": 1.0, "valor_unitario": vt, "valor_total_item": vt}]
+
+    total_calculado = _f(sum(i["valor_total_item"] for i in itens_processados)) if itens_processados else _f(dados.get("valor_total") or 0.0)
+
     documento = {
         "id": ref.id,
         "cliente_id": dados["cliente_id"],
@@ -239,16 +256,8 @@ def salvar_lancamento(dados: Dict[str, Any]) -> Dict[str, Any]:
         "tipo_operacao": dados["tipo_operacao"],
         "tipo_pagamento": dados["tipo_pagamento"],
         "forma_pagamento": dados["forma_pagamento"],
-        "itens": [
-            {
-                "descricao": str(i["descricao"])[:200],
-                "quantidade": float(i["quantidade"]),
-                "valor_unitario": _f(i["valor_unitario"]),
-                "valor_total_item": _f(float(i["quantidade"]) * float(i["valor_unitario"])),
-            }
-            for i in dados.get("itens", [])
-        ],
-        "valor_total": 0.0,
+        "itens": itens_processados,
+        "valor_total": total_calculado,
         "confianca_extracao": dados.get("confianca_extracao", "ALTO"),
         "status_validacao": dados.get("status_validacao", APROVADO),
         "divergencia_calculo": bool(dados.get("divergencia_calculo", False)),
@@ -257,7 +266,6 @@ def salvar_lancamento(dados: Dict[str, Any]) -> Dict[str, Any]:
         "observacoes": str(dados.get("observacoes", ""))[:2000],
         "criado_em": agora,
     }
-    documento["valor_total"] = _f(sum(i["valor_total_item"] for i in documento["itens"]))
     ref.set(documento)
     return documento
 
@@ -687,3 +695,249 @@ def registrar_log_webhook(
     }
     ref.set(documento)
     return documento
+
+
+# ---------------------------------------------------------------------------
+# Operações complementares para rotas /api
+# ---------------------------------------------------------------------------
+def excluir_lancamento(
+    lancamento_id: str, permanente: bool = False, motivo: Optional[str] = None
+) -> Dict[str, Any]:
+    """Exclui ou cancela um lançamento com estorno automático de saldos."""
+    atual = obter_lancamento(lancamento_id)
+    if not atual:
+        raise NotFoundError(f"Lançamento '{lancamento_id}' não encontrado.")
+
+    cliente_id = atual.get("cliente_id")
+
+    if permanente:
+        get_db().collection(Collections.LANCAMENTOS).document(lancamento_id).delete()
+        saldo_atual = recalcular_saldo_cliente(cliente_id) if cliente_id else 0.0
+        return {
+            "id": lancamento_id,
+            "status": "REMOVIDO",
+            "permanente": True,
+            "mensagem": f"Lançamento '{lancamento_id}' excluído permanentemente do Firestore.",
+            "cliente_id": cliente_id,
+            "saldo_fiado_atual": saldo_atual,
+        }
+    else:
+        agora = agora_iso()
+        nota_cancelamento = f"[Cancelado em {agora}" + (f": {motivo}" if motivo else "") + "]"
+        obs_atual = atual.get("observacoes", "")
+        nova_obs = f"{obs_atual} | {nota_cancelamento}".strip(" | ")[:2000]
+
+        updates = {
+            "status_validacao": "CANCELADO",
+            "observacoes": nova_obs,
+            "cancelado_em": agora,
+        }
+        atualizado = atualizar_lancamento(lancamento_id, updates)
+        saldo_atual = recalcular_saldo_cliente(cliente_id) if cliente_id else 0.0
+        cliente = obter_cliente(cliente_id) if cliente_id else None
+        atualizado["cliente_nome"] = cliente.get("nome") if cliente else None
+        atualizado["saldo_fiado_atual"] = saldo_atual
+        return atualizado
+
+
+def criar_lancamento_manual(
+    cliente: Optional[str] = None,
+    cliente_id: Optional[str] = None,
+    itens: Optional[List[Dict[str, Any]]] = None,
+    valor_total: Optional[float] = None,
+    tipo: Optional[str] = None,
+    forma_pagamento: Optional[str] = None,
+    status: Optional[str] = None,
+    confianca: Optional[str] = None,
+    observacoes: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Cria manualmente um lançamento (venda ou fiado), atualizando saldo de fiado."""
+    # 1. Resolução do cliente
+    if cliente_id:
+        c = obter_cliente(cliente_id)
+        if not c:
+            raise NotFoundError(f"Cliente '{cliente_id}' não encontrado.")
+    elif cliente:
+        c = obter_ou_criar_cliente(cliente)
+        cliente_id = c["id"]
+    else:
+        c = garantir_cliente_sistema(CLIENTE_BALCAO_ID, CLIENTE_BALCAO_NOME)
+        cliente_id = CLIENTE_BALCAO_ID
+
+    # 2. Resolução do tipo e forma de pagamento
+    tipo_str = (tipo or "VENDA").upper()
+    forma_str = (forma_pagamento or "DINHEIRO").upper()
+    if forma_str == "CARTAO":
+        forma_str = "CARTAO_CREDITO"
+
+    if tipo_str == "FIADO" or forma_str == "FIADO":
+        tipo_op = VENDA
+        tipo_pag = FIADO_A_RECEBER
+        forma_pag = "FIADO"
+    else:
+        tipo_op = VENDA
+        tipo_pag = PAGO
+        forma_pag = forma_str
+
+    # 3. Status de validação
+    status_str = (status or APROVADO).upper()
+    if status_str in ("PENDENTE_CONFERENCIA", "PENDENTE_REVISAO"):
+        status_val = PENDENTE_REVISAO
+    elif status_str in (APROVADO, "CANCELADO", REJEITADO):
+        status_val = status_str
+    else:
+        status_val = APROVADO
+
+    # 4. Itens e valor
+    itens_formatados: List[Dict[str, Any]] = []
+    if itens:
+        for it in itens:
+            q = float(it.get("quantidade", 1.0))
+            u = _f(it.get("valor_unitario", 0.0))
+            itens_formatados.append({
+                "descricao": str(it.get("descricao", "Item"))[:200],
+                "quantidade": q,
+                "valor_unitario": u,
+                "valor_total_item": _f(q * u),
+            })
+        vt_calc = _f(sum(i["valor_total_item"] for i in itens_formatados))
+    elif valor_total is not None and valor_total > 0:
+        vt_calc = _f(valor_total)
+        desc = "Fiado manual" if tipo_pag == FIADO_A_RECEBER else "Venda manual"
+        itens_formatados = [{"descricao": desc, "quantidade": 1.0, "valor_unitario": vt_calc, "valor_total_item": vt_calc}]
+    else:
+        vt_calc = 0.0
+
+    lanc = salvar_lancamento({
+        "cliente_id": cliente_id,
+        "tipo_operacao": tipo_op,
+        "tipo_pagamento": tipo_pag,
+        "forma_pagamento": forma_pag,
+        "itens": itens_formatados,
+        "valor_total": vt_calc,
+        "confianca_extracao": (confianca or "ALTO").upper(),
+        "status_validacao": status_val,
+        "divergencia_calculo": False,
+        "origem_dados": "TEXTO",
+        "transcricao_raw": f"Lançamento manual registrado via API: {formatar_brl(vt_calc)}.",
+        "observacoes": observacoes or "",
+    })
+
+    if tipo_pag == FIADO_A_RECEBER and status_val == APROVADO:
+        recalcular_saldo_cliente(cliente_id)
+
+    c_atualizado = obter_cliente(cliente_id) or c
+    lanc["cliente_nome"] = c_atualizado.get("nome", cliente_id)
+    return lanc, c_atualizado
+
+
+def atualizar_lancamento_manual(lancamento_id: str, payload_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Edita itens, valor, cliente, tipo ou forma de pagamento de um lançamento."""
+    atual = obter_lancamento(lancamento_id)
+    if not atual:
+        raise NotFoundError(f"Lançamento '{lancamento_id}' não encontrado.")
+
+    updates: Dict[str, Any] = {}
+    cliente_antigo = atual.get("cliente_id")
+    novo_cliente_id = payload_dict.get("cliente_id")
+
+    if payload_dict.get("cliente") and not novo_cliente_id:
+        c = obter_ou_criar_cliente(payload_dict["cliente"])
+        novo_cliente_id = c["id"]
+
+    if novo_cliente_id and novo_cliente_id != cliente_antigo:
+        if not obter_cliente(novo_cliente_id):
+            raise NotFoundError(f"Cliente '{novo_cliente_id}' não encontrado.")
+        updates["cliente_id"] = novo_cliente_id
+
+    if payload_dict.get("itens") is not None:
+        novos_itens = [
+            {
+                "descricao": str(i.get("descricao", "Item"))[:200],
+                "quantidade": float(i.get("quantidade", 1.0)),
+                "valor_unitario": _f(i.get("valor_unitario", 0.0)),
+                "valor_total_item": _f(float(i.get("quantidade", 1.0)) * float(i.get("valor_unitario", 0.0))),
+            }
+            for i in payload_dict["itens"]
+        ]
+        updates["itens"] = novos_itens
+        updates["valor_total"] = _f(sum(i["valor_total_item"] for i in novos_itens))
+        updates["divergencia_calculo"] = False
+    elif payload_dict.get("valor_total") is not None:
+        v_tot = _f(payload_dict["valor_total"])
+        updates["valor_total"] = v_tot
+        if not atual.get("itens"):
+            updates["itens"] = [{"descricao": "Lançamento", "quantidade": 1.0, "valor_unitario": v_tot, "valor_total_item": v_tot}]
+
+    tipo_in = payload_dict.get("tipo")
+    forma_in = payload_dict.get("forma_pagamento")
+    if tipo_in or forma_in:
+        tipo_str = (tipo_in or ("FIADO" if atual.get("tipo_pagamento") == FIADO_A_RECEBER else "VENDA")).upper()
+        forma_str = (forma_in or atual.get("forma_pagamento", "DINHEIRO")).upper()
+        if forma_str == "CARTAO":
+            forma_str = "CARTAO_CREDITO"
+        if tipo_str == "FIADO" or forma_str == "FIADO":
+            updates["tipo_operacao"] = VENDA
+            updates["tipo_pagamento"] = FIADO_A_RECEBER
+            updates["forma_pagamento"] = "FIADO"
+        else:
+            updates["tipo_operacao"] = VENDA
+            updates["tipo_pagamento"] = PAGO
+            updates["forma_pagamento"] = forma_str
+
+    if payload_dict.get("status") is not None:
+        st = payload_dict["status"].upper()
+        if st in ("PENDENTE_CONFERENCIA", "PENDENTE_REVISAO"):
+            updates["status_validacao"] = PENDENTE_REVISAO
+        elif st in (APROVADO, "CANCELADO", REJEITADO):
+            updates["status_validacao"] = st
+
+    if payload_dict.get("observacoes") is not None:
+        updates["observacoes"] = str(payload_dict["observacoes"])[:2000]
+
+    atualizado = atualizar_lancamento(lancamento_id, updates)
+
+    # Recalcula saldos se envolver fiado ou troca de cliente
+    afetados = {cid for cid in [cliente_antigo, atualizado.get("cliente_id")] if cid}
+    for cid in afetados:
+        recalcular_saldo_cliente(cid)
+
+    cliente_doc = obter_cliente(atualizado.get("cliente_id", ""))
+    atualizado["cliente_nome"] = cliente_doc.get("nome") if cliente_doc else atualizado.get("cliente_id")
+    atualizado["saldo_fiado_atual"] = cliente_doc.get("saldo_fiado_atual", 0.0) if cliente_doc else 0.0
+    return atualizado
+
+
+def aprovar_lancamento(lancamento_id: str, observacoes: Optional[str] = None) -> Dict[str, Any]:
+    """Aprova um lançamento que estava na fila de conferência humana."""
+    return validar_lancamento(
+        lancamento_id=lancamento_id,
+        status_validacao=APROVADO,
+        observacoes=observacoes,
+    )
+
+
+def verificar_e_registrar_idempotencia_webhook(message_id: str, payload_resumo: Dict[str, Any]) -> bool:
+    """Verifica se mensagem já foi processada (idempotência). Retorna True se for duplicada."""
+    if not message_id:
+        return False
+    ref = get_db().collection(Collections.WEBHOOK_IDEMPOTENCIA).document(str(message_id))
+    snap = ref.get()
+    if snap.exists:
+        return True
+    ref.set({
+        "message_id": str(message_id),
+        "processado_em": agora_iso(),
+        "payload_resumo": sanitizar_payload(payload_resumo),
+    })
+    return False
+
+
+def testar_conexao_firestore() -> Tuple[bool, str]:
+    """Testa se a conexão ativa com o Cloud Firestore está funcionando."""
+    try:
+        # Leitura rápida de 1 documento para aferição de socket/auth
+        list(get_db().collection(Collections.CLIENTES).limit(1).stream())
+        return True, "Conectado"
+    except Exception as exc:
+        return False, str(exc)

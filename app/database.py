@@ -25,6 +25,7 @@ class Collections:
     LANCAMENTOS = "lancamentos"
     FECHAMENTOS = "fechamentos"
     LOGS_WEBHOOK = "logs_webhook"
+    WEBHOOK_IDEMPOTENCIA = "webhook_idempotencia"
 
 
 def init_firebase() -> firebase_admin.App:

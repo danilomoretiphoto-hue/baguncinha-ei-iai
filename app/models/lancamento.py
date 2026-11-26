@@ -233,3 +233,81 @@ class BaixaFiadoResponse(BaseModel):
     lancamento: Lancamento
     saldo_anterior: float
     saldo_fiado_atual: float
+
+
+# ---------------------------------------------------------------------------
+# Schemas para rotas consolidadas da API (/api/lancamentos e /api/clientes)
+# ---------------------------------------------------------------------------
+class LancamentoCreate(BaseModel):
+    """Payload para criação manual de lançamento (venda ou fiado)."""
+
+    cliente: Optional[str] = Field(None, description="Nome do cliente (ex: 'João da Padaria')")
+    cliente_id: Optional[str] = Field(None, description="ID do cliente caso já cadastrado")
+    itens: Optional[List[ItemLancamento]] = Field(default=None, description="Itens comercializados")
+    valor_total: Optional[float] = Field(None, ge=0, description="Valor total da operação (opcional se itens informados)")
+    tipo: Optional[str] = Field("VENDA", description="Tipo da transação: 'VENDA' ou 'FIADO'")
+    forma_pagamento: Optional[str] = Field("DINHEIRO", description="'DINHEIRO', 'PIX', 'CARTAO', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'FIADO'")
+    status: Optional[str] = Field("APROVADO", description="'APROVADO' ou 'PENDENTE_CONFERENCIA'")
+    confianca: Optional[str] = Field("ALTA", description="'ALTA', 'MEDIA' ou 'BAIXA'")
+    observacoes: Optional[str] = Field(None, max_length=2000)
+
+
+class LancamentoUpdate(BaseModel):
+    """Payload para edição parcial de lançamento existente."""
+
+    cliente: Optional[str] = Field(None, description="Atualizar nome ou associar a outro cliente")
+    cliente_id: Optional[str] = Field(None, description="ID do cliente")
+    itens: Optional[List[ItemLancamento]] = Field(None, description="Nova lista de itens")
+    valor_total: Optional[float] = Field(None, ge=0, description="Novo valor total")
+    tipo: Optional[str] = Field(None, description="'VENDA' ou 'FIADO'")
+    forma_pagamento: Optional[str] = Field(None, description="'DINHEIRO', 'PIX', 'CARTAO', 'FIADO'")
+    status: Optional[str] = Field(None, description="'APROVADO', 'PENDENTE_CONFERENCIA', 'CANCELADO'")
+    observacoes: Optional[str] = Field(None, max_length=2000)
+
+
+class ExclusaoLancamentoResponse(BaseModel):
+    """Resposta da exclusão lógica ou física de lançamento."""
+
+    id: str
+    status: str
+    permanente: bool
+    mensagem: str
+    cliente_id: Optional[str] = None
+    saldo_fiado_atual: float = 0.0
+
+
+class AprovarLancamentoRequest(BaseModel):
+    """Payload opcional para aprovação de lançamento em conferência."""
+
+    observacoes: Optional[str] = Field(None, max_length=2000)
+
+
+class BaixaFiadoClienteRequest(BaseModel):
+    """Payload para baixa de fiado pelo ID do cliente (POST /api/clientes/{id}/baixa-fiado)."""
+
+    valor_pago: float = Field(..., gt=0, examples=[50.0], description="Valor amortizado ou quitado")
+    forma_pagamento: FormaPagamento = Field(FormaPagamento.PIX, description="Forma do pagamento (PIX, DINHEIRO, CARTAO)")
+    observacoes: Optional[str] = Field(None, max_length=1000)
+
+    @field_validator("forma_pagamento")
+    @classmethod
+    def _forma_valida(cls, v: FormaPagamento) -> FormaPagamento:
+        if v == FormaPagamento.FIADO:
+            raise ValueError("Baixa de fiado não pode ser paga com FIADO.")
+        return v
+
+    @field_validator("valor_pago")
+    @classmethod
+    def _arredondar(cls, v: float) -> float:
+        return round(v, 2)
+
+
+class BaixaFiadoClienteResponse(BaseModel):
+    """Resposta consolidada de baixa de fiado de um cliente."""
+
+    mensagem: str
+    cliente_id: str
+    cliente_nome: str
+    saldo_anterior: float
+    saldo_fiado_atual: float
+    lancamento: Lancamento
